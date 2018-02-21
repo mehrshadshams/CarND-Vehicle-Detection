@@ -12,6 +12,7 @@ from sklearn.svm import SVC
 from sklearn.externals import joblib
 
 from utils import *
+import logging
 
 
 def main():
@@ -23,17 +24,17 @@ def main():
     for cspace in COLOR_SPACES:
         st = time.time()
 
-        print(f'Traing on {cspace}')
+        logger.info(f'Trainig on {cspace}')
 
-        print('Loading features ...')
+        logger.info('Loading features ...')
         X = extract_features(vehicles + non_vehicles, cspace=cspace)
-        print('Features loaded in {}'.format(time.time() - st))
+        logger.info('Features loaded in {}'.format(time.time() - st))
 
         y = np.concatenate([np.ones(len(vehicles)), np.zeros(len(non_vehicles))])
 
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.33, random_state=42)
 
-        print('Scaling features ...')
+        logger.info('Scaling features ...')
 
         scaler = StandardScaler()
         scaler.fit(X_train)
@@ -47,24 +48,36 @@ def main():
         joblib.dump({'X': X_test_scaled, 'y': y_test}, f'test{cspace}.pkl')
 
         train_start = time.time()
-        print('Training ...')
+        logger.info('Training ...')
 
         parameters = {'kernel': ('linear', 'rbf'), 'C': [1, 10]}
         svr = SVC()
         clf = GridSearchCV(svr, parameters)
         clf.fit(X_train_scaled, y_train)
 
-        print('Training finished in {}ms'.format(time.time() - train_start))
-        print(clf.best_params_)
+        logger.info('Training finished in {}ms'.format(time.time() - train_start))
+        logger.info(clf.best_params_)
 
         score = clf.score(X_test_scaled, y_test)
 
-        print('Score on test {}, Time={}ms'.format(score, time.time() - st))
+        logger.info('Score on test {}, Time={}ms'.format(score, time.time() - st))
 
         joblib.dump(clf, f'svm{cspace}.pkl')
 
-        print('\n==========================================\n')
+        logger.info('\n==========================================\n')
 
 
 if __name__ == '__main__':
+    logger = logging.getLogger('train')
+    logger.setLevel(logging.DEBUG)
+
+    fh = logging.FileHandler('train.log')
+    fh.setLevel(logging.DEBUG)
+    # create console handler with a higher log level
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.DEBUG)
+
+    logger.addHandler(fh)
+    logger.addHandler(ch)
+
     main()
