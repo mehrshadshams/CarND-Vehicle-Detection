@@ -83,7 +83,7 @@ def apply_threshold(heatmap, threshold):
 
 
 def draw_labeled_bboxes(img, labels):
-    for car_number in range(1, labels[1]+1):
+    for car_number in range(1, labels[1] + 1):
         # Find pixels with each car_number label value
         nonzero = (labels[0] == car_number).nonzero()
         # Identify x and y values of those pixels
@@ -105,7 +105,47 @@ regions = [(32, (405, 450)), (64, (400, 550)), (96, (400, 600)), (128, (400, 650
 ystart, yend = 400, 650
 
 
-def find_car(img, export=True):
+def find_car_patch_features(img, export=True):
+    time_start = time.time()
+
+    all_windows = []
+
+    for ws, r in regions:
+        windows = slide_window(img, y_start_stop=r, xy_window=(ws, ws), xy_overlap=(0.3, 0.3))
+        windows = search_windows(img, windows, clf, scaler)
+        [all_windows.append(w) for w in windows]
+
+    draw_img = draw_boxes(img, all_windows)
+
+    heat = np.zeros_like(img[:, :, 0]).astype(np.float)
+
+    heat = add_heat(heat, all_windows)
+
+    if export:
+        mpimg.imsave('windows.png', draw_img)
+        mpimg.imsave('heat.png', heat)
+
+    heat = apply_threshold(heat, 2)
+
+    heatmap = np.clip(heat, 0, 255)
+
+    labels = label(heatmap)
+    draw_img = draw_labeled_bboxes(np.copy(img), labels)
+
+    # plt.imshow(out_img)
+
+    if export:
+        mpimg.imsave('final.png', draw_img)
+
+    time_end = time.time()
+
+    if export:
+        print('Time: {}s'.format((time_end - time_start)))
+
+    return draw_img
+
+
+def find_car_single_hog(img, export=True):
     time_start = time.time()
 
     img_to_search = img[ystart:yend, :, :]
@@ -114,7 +154,7 @@ def find_car(img, export=True):
 
     if scale != 1:
         imshape = img_to_search.shape
-        img_to_search = cv2.resize(img_to_search, (np.int(imshape[1]/scale), (np.int(imshape[0]/scale))))
+        img_to_search = cv2.resize(img_to_search, (np.int(imshape[1] / scale), (np.int(imshape[0] / scale))))
 
     ch1 = img_to_search[:, :, 0]
     ch2 = img_to_search[:, :, 1]
@@ -135,7 +175,8 @@ def find_car(img, export=True):
 
     all_windows = []
 
-    hog1 = get_hog_features(cv2.cvtColor(img_to_search, cv2.COLOR_RGB2GRAY), orient, pix_per_cell, cell_per_block, vis=False, feature_vec=False)
+    hog1 = get_hog_features(cv2.cvtColor(img_to_search, cv2.COLOR_RGB2GRAY), orient, pix_per_cell, cell_per_block,
+                            vis=False, feature_vec=False)
     # hog2 = get_hog_features(ch2, orient, pix_per_cell, cell_per_block, vis=False, feature_vec=False)
     # hog3 = get_hog_features(ch3, orient, pix_per_cell, cell_per_block, vis=False, feature_vec=False)
 
@@ -168,7 +209,8 @@ def find_car(img, export=True):
                 ytop = ypos * pix_per_cell
 
                 # Extract the image patch
-                subimg = cv2.resize(img_to_search[ytop:min(h, ytop + window), xleft:min(w, xleft + window)], (window, window))
+                subimg = cv2.resize(img_to_search[ytop:min(h, ytop + window), xleft:min(w, xleft + window)],
+                                    (window, window))
 
                 # Get color features
                 spatial_features = bin_spatial(subimg, size=spatial_size)
@@ -182,9 +224,11 @@ def find_car(img, export=True):
                     xbox_left = np.int(xleft * scale)
                     ytop_draw = np.int(ytop * scale)
                     win_draw = np.int(window)
-                    all_windows.append(((xbox_left, ytop_draw + ystart), (xbox_left + win_draw, ytop_draw + win_draw + ystart)))
-                    cv2.rectangle(draw_img, (xbox_left, ytop_draw + ystart), (xbox_left + win_draw, ytop_draw + win_draw + ystart),
-                              (0, 0, 255), 6)
+                    all_windows.append(
+                        ((xbox_left, ytop_draw + ystart), (xbox_left + win_draw, ytop_draw + win_draw + ystart)))
+                    cv2.rectangle(draw_img, (xbox_left, ytop_draw + ystart),
+                                  (xbox_left + win_draw, ytop_draw + win_draw + ystart),
+                                  (0, 0, 255), 6)
 
     # # 64 was the orginal sampling rate, with 8 cells and 8 pix per cell
     # window = 64
@@ -228,22 +272,23 @@ def find_car(img, export=True):
 
     return draw_img
 
+
 # plt.imshow(draw_img)
 # plt.waitforbuttonpress()
 
 def process_frame(frame):
     try:
-        return find_car(frame, export=False)
+        return find_car_patch_features(frame, export=False)
     except Exception as e:
         traceback.print_exc()
         return frame
 
 
 # video_file = 'test_video.mp4'
-# video_file = 'project_video.mp4'
-# clip = VideoFileClip(video_file)
-# clip = clip.fl_image(process_frame)
-# clip.write_videofile(os.path.splitext(video_file)[0] + '_out.mp4', audio=False)
+video_file = 'project_video.mp4'
+clip = VideoFileClip(video_file)
+clip = clip.fl_image(process_frame)
+clip.write_videofile(os.path.splitext(video_file)[0] + '_out.mp4', audio=False)
 
-sample_img = load_image('./test_images/test6.jpg')
-find_car(sample_img, export=True)
+# sample_img = load_image('./test_images/test6.jpg')
+# find_car1(sample_img, export=True)
