@@ -24,9 +24,6 @@ class Pipeline(object):
 
         out_img = self._detector.detect_cars(image)
 
-        if self._verbose:
-            save_image(f'{self._filename_no_ext}.jpg', out_img, out_dir=OUT_DIR)
-
         return out_img
 
     @staticmethod
@@ -46,6 +43,10 @@ class ImagePipeline(Pipeline):
         image = cv2.imread(args.filename)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         self._image = image
+
+    def process_image(self, image):
+        out_img = super().process_image(image)
+        save_image(f'{self._filename_no_ext}.jpg', out_img, out_dir=OUT_DIR)
 
     def run(self):
         self.process_image(self._image)
@@ -81,7 +82,7 @@ if __name__ == '__main__':
     parser.add_argument("--detector", choices=['svm', 'nn'], help="Detector mode", default='svm')
     parser.add_argument("--svm_file", help="Path to the svm file", default='svm.pkl')
     parser.add_argument("--weight_file", help="Path to the model file", default='model.h5')
-    parser.add_argument("--verbose", action="store_true", help="Enable verbosity")
+    parser.add_argument("--verbose", action="store_true", default=False, help="Enable verbosity")
 
     args = parser.parse_args()
 

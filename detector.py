@@ -81,7 +81,8 @@ class SvmDetector(Detector):
                 t = (time.time() - feature_extraction_start)
                 logging.info(f'Region: {bounds}, Scale: {scale}, Time: {t}s')
 
-        draw_img = draw_boxes(img, windows)
+        if self._verbose:
+            draw_img = draw_boxes(img, windows)
 
         heat = np.zeros_like(img[:, :, 0]).astype(np.float)
 
