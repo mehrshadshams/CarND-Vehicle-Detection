@@ -27,7 +27,7 @@ def main():
         logger.info(f'Trainig on {cspace}')
 
         logger.info('Loading features ...')
-        X = extract_features(vehicles + non_vehicles, cspace=cspace)
+        X = extract_features(vehicles + non_vehicles, cspace=cspace, single_hog=True)
         logger.info('Features loaded in {}'.format(time.time() - st))
 
         y = np.concatenate([np.ones(len(vehicles)), np.zeros(len(non_vehicles))])
