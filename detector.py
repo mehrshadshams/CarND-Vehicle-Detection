@@ -90,13 +90,16 @@ class SvmDetector(Detector):
 
         if self._verbose:
             save_image(f'{self._filename_no_ext}_windows.jpg', draw_img)
-            save_image(f'{self._filename_no_ext}_heat.jpg', heat)
+            save_image(f'{self._filename_no_ext}_heat.jpg', heat, cmap='hot')
 
         heat = apply_threshold(heat, 2)
 
         heatmap = np.clip(heat, 0, 255)
 
         labels = label(heatmap)
+
+        if self._verbose:
+            save_image(f'{self._filename_no_ext}_labels.jpg', cmap='gray', img=labels[0])
 
         draw_img, _ = draw_labeled_bboxes(np.copy(img), labels)
 

@@ -230,5 +230,5 @@ def draw_boxes(img, boxes, color=(0, 255, 0), thickness=4):
     return img
 
 
-def save_image(fname, img, out_dir=IMAGES_DIR, **kwargs):
-    mpimg.imsave(os.path.join(out_dir, fname), img, **kwargs)
+def save_image(fname, img, cmap=None, out_dir=IMAGES_DIR, **kwargs):
+    mpimg.imsave(os.path.join(out_dir, fname), img, cmap=cmap, **kwargs)
