@@ -32,7 +32,9 @@ The goals / steps of this project are the following:
 [test_5_output]: ./output_images/test5.jpg
 [test_6_windows]: ./images/test6_windows.jpg
 [test_6_heat]: ./images/test6_heat.jpg
+[test_6_label]: ./images/test6_labels.jpg
 [test_6_output]: ./output_images/test6.jpg
+[label]: ./images/labels.png
 
 [image3]: ./examples/sliding_windows.jpg
 [image4]: ./examples/sliding_window.jpg
@@ -137,7 +139,7 @@ I recorded the positions of positive detections in each frame of the video.  Fro
 The images above show the heat map and the following image shows the result of `scipy.ndimage.measurements.label()`
 
 ### Here is the output of `scipy.ndimage.measurements.label()` on an image:
-![alt text][image6]
+![alt text][label]
 
 ### Here the resulting bounding boxes on test images:
 
