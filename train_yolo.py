@@ -409,8 +409,8 @@ class DataGenerator(object):
 
 
 def _main():
-    model_path = '/Users/meshams/Documents/Learn/temp/YAD2K/model_data/tiny-yolo.h5'
-    anchor_path = '/Users/meshams/Documents/Learn/temp/YAD2K/model_data/tiny-yolo_anchors.txt'
+    # model_path = '/Users/meshams/Documents/Learn/temp/YAD2K/model_data/tiny-yolo.h5'
+    anchor_path = 'tiny-yolo_anchors.txt'
 
     data = pd.read_csv(os.path.join(DATA_PATH, 'labels2.csv'))
     class_names = data.Label.unique()
