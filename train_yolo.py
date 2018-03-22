@@ -3,6 +3,8 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 import cv2
+import colorsys
+import random
 
 from keras.layers import Input, Conv2D, BatchNormalization, LeakyReLU, MaxPooling2D, Lambda
 from keras.regularizers import l2
@@ -10,6 +12,8 @@ from keras.models import Model
 from keras import backend as K
 from keras.callbacks import TensorBoard, ModelCheckpoint, EarlyStopping
 from sklearn.preprocessing import LabelEncoder
+
+from PIL import Image, ImageDraw, ImageFont
 
 
 YOLO_ANCHORS = np.array(
@@ -166,7 +170,7 @@ def yolo_loss(args, anchors, num_classes, rescore_confidence=False, print_loss=F
     return total_loss
 
 
-def create_model(class_names):
+def create_model(class_names, prediction=False):
     n_classes = len(class_names)
     n_anchors = 5
 
@@ -198,6 +202,8 @@ def create_model(class_names):
     x = BatchNormalization()(x)
     x = LeakyReLU(alpha=0.1)(x)
 
+    x = MaxPooling2D()(x)
+
     # Conv4
     x = Conv2D(128, (3, 3), padding='same', kernel_regularizer=l2(5e-4), use_bias=False)(x)
     x = BatchNormalization()(x)
@@ -217,7 +223,7 @@ def create_model(class_names):
     x = BatchNormalization()(x)
     x = LeakyReLU(alpha=0.1)(x)
 
-    x = MaxPooling2D()(x)
+    x = MaxPooling2D(padding='same', pool_size=2, strides=(1, 1))(x)
 
     # Conv7
     x = Conv2D(1024, (3, 3), padding='same', kernel_regularizer=l2(5e-4), use_bias=False)(x)
@@ -234,19 +240,22 @@ def create_model(class_names):
 
     model_body = Model(image_input, x)
 
-    model_loss = Lambda(
-                yolo_loss,
-                output_shape=(1, ),
-                name='yolo_loss',
-                arguments={'anchors': YOLO_ANCHORS,
-                           'num_classes': len(class_names)})([
-                               model_body.output, boxes_input,
-                               detectors_mask_input, matching_boxes_input
-                           ])
+    if not prediction:
+        model_loss = Lambda(
+                    yolo_loss,
+                    output_shape=(1, ),
+                    name='yolo_loss',
+                    arguments={'anchors': YOLO_ANCHORS,
+                               'num_classes': len(class_names)})([
+                                   model_body.output, boxes_input,
+                                   detectors_mask_input, matching_boxes_input
+                               ])
 
-    model = Model(
-            [model_body.input, boxes_input, detectors_mask_input,
-             matching_boxes_input], model_loss)
+        model = Model(
+                [model_body.input, boxes_input, detectors_mask_input,
+                 matching_boxes_input], model_loss)
+    else:
+        model = model_body
 
     print(model.summary())
 
@@ -408,6 +417,166 @@ class DataGenerator(object):
         return np.array(images), boxes, detectors_mask, matching_true_boxes
 
 
+def yolo_boxes_to_corners(box_xy, box_wh):
+    """Convert YOLO box predictions to bounding box corners."""
+    box_mins = box_xy - (box_wh / 2.)
+    box_maxes = box_xy + (box_wh / 2.)
+
+    return K.concatenate([
+        box_mins[..., 1:2],  # y_min
+        box_mins[..., 0:1],  # x_min
+        box_maxes[..., 1:2],  # y_max
+        box_maxes[..., 0:1]  # x_max
+    ])
+
+def yolo_filter_boxes(boxes, box_confidence, box_class_probs, threshold=.6):
+    """Filter YOLO boxes based on object and class confidence."""
+    box_scores = box_confidence * box_class_probs
+    box_classes = K.argmax(box_scores, axis=-1)
+    box_class_scores = K.max(box_scores, axis=-1)
+    prediction_mask = box_class_scores >= threshold
+
+    # TODO: Expose tf.boolean_mask to Keras backend?
+    boxes = tf.boolean_mask(boxes, prediction_mask)
+    scores = tf.boolean_mask(box_class_scores, prediction_mask)
+    classes = tf.boolean_mask(box_classes, prediction_mask)
+    return boxes, scores, classes
+
+
+def yolo_eval(yolo_outputs,
+              image_shape,
+              max_boxes=10,
+              score_threshold=.6,
+              iou_threshold=.5):
+    """Evaluate YOLO model on given input batch and return filtered boxes."""
+    box_xy, box_wh, box_confidence, box_class_probs = yolo_outputs
+    boxes = yolo_boxes_to_corners(box_xy, box_wh)
+    boxes, scores, classes = yolo_filter_boxes(
+        boxes, box_confidence, box_class_probs, threshold=score_threshold)
+
+    # Scale boxes back to original image shape.
+    height = image_shape[0]
+    width = image_shape[1]
+    image_dims = K.stack([height, width, height, width])
+    image_dims = K.reshape(image_dims, [1, 4])
+    boxes = boxes * image_dims
+
+    # TODO: Something must be done about this ugly hack!
+    max_boxes_tensor = K.variable(max_boxes, dtype='int32')
+    K.get_session().run(tf.variables_initializer([max_boxes_tensor]))
+    nms_index = tf.image.non_max_suppression(
+        boxes, scores, max_boxes_tensor, iou_threshold=iou_threshold)
+    boxes = K.gather(boxes, nms_index)
+    scores = K.gather(scores, nms_index)
+    classes = K.gather(classes, nms_index)
+    return boxes, scores, classes
+
+
+def _eval():
+    model_path = 'trained_stage_3_best.h5'
+    anchor_path = 'tiny-yolo_anchors.txt'
+    # Load anchors
+    with open(anchor_path) as f:
+        anchors = f.readline()
+        anchors = [float(x) for x in anchors.split(',')]
+        anchors = np.array(anchors).reshape(-1, 2)
+
+    data = pd.read_csv(os.path.join(DATA_PATH, 'labels2.csv'))
+    class_names = data.Label.unique()
+
+    lenc = LabelEncoder()
+    data['c'] = lenc.fit_transform(data.Label)
+
+    hsv_tuples = [(x / len(class_names), 1., 1.)
+                  for x in range(len(class_names))]
+    colors = list(map(lambda x: colorsys.hsv_to_rgb(*x), hsv_tuples))
+    colors = list(
+        map(lambda x: (int(x[0] * 255), int(x[1] * 255), int(x[2] * 255)),
+            colors))
+    random.seed(10101)  # Fixed seed for consistent colors across runs.
+    random.shuffle(colors)  # Shuffle colors to decorrelate adjacent classes.
+    random.seed(None)  # Reset seed to default.
+
+    print('Creating model...')
+
+    model_body, yolo_model = create_model(lenc.classes_, prediction=True)
+    yolo_model.load_weights(model_path)
+
+    image_file = '/Users/meshams/Documents/Learn/temp/YAD2K/images/test1.jpg'
+
+    image = cv2.imread(image_file)
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    image = cv2.resize(image, (416, 416))
+    image = image.astype(np.float32) / 255.
+    image = image[np.newaxis,:]
+
+    sess = K.get_session()
+
+    model_image_size = yolo_model.layers[0].input_shape[1:3]
+
+    yolo_outputs = yolo_head(yolo_model.output, anchors, len(class_names))
+
+    input_image_shape = K.placeholder(shape=(2,))
+
+    boxes, scores, classes = yolo_eval(
+        yolo_outputs,
+        input_image_shape,
+        score_threshold=0.3,
+        iou_threshold=0.5)
+
+    out_boxes, out_scores, out_classes = sess.run(
+            [boxes, scores, classes],
+            feed_dict={
+                yolo_model.input: image,
+                input_image_shape: [image.shape[1], image.shape[0]],
+                K.learning_phase(): 0
+            })
+    print('Found {} boxes for {}'.format(len(out_boxes), image_file))
+
+    font = ImageFont.truetype(
+        font='font/FiraMono-Medium.otf',
+        size=np.floor(3e-2 * image.shape[1] + 0.5).astype('int32'))
+    thickness = (image.shape[0] + image.shape[1]) // 300
+
+    image_orig = Image.open(image_file)
+    for i, c in reversed(list(enumerate(out_classes))):
+        predicted_class = class_names[c]
+        box = out_boxes[i]
+        score = out_scores[i]
+
+        label = '{} {:.2f}'.format(predicted_class, score)
+
+        draw = ImageDraw.Draw(image_orig)
+        label_size = draw.textsize(label, font)
+
+        top, left, bottom, right = box
+        top = max(0, np.floor(top + 0.5).astype('int32'))
+        left = max(0, np.floor(left + 0.5).astype('int32'))
+        bottom = min(image_orig.size[1], np.floor(bottom + 0.5).astype('int32'))
+        right = min(image_orig.size[0], np.floor(right + 0.5).astype('int32'))
+        print(label, (left, top), (right, bottom))
+
+        if top - label_size[1] >= 0:
+            text_origin = np.array([left, top - label_size[1]])
+        else:
+            text_origin = np.array([left, top + 1])
+
+        # My kingdom for a good redistributable image drawing library.
+        for i in range(thickness):
+            draw.rectangle(
+                [left + i, top + i, right - i, bottom - i],
+                outline=colors[c])
+        draw.rectangle(
+            [tuple(text_origin), tuple(text_origin + label_size)],
+            fill=colors[c])
+        draw.text(text_origin, label, fill=(0, 0, 0), font=font)
+        del draw
+        image_orig.save(os.path.split(image_file)[-1], quality=90)
+
+    sess.close()
+
+
+
 def _main():
     # model_path = '/Users/meshams/Documents/Learn/temp/YAD2K/model_data/tiny-yolo.h5'
     anchor_path = 'tiny-yolo_anchors.txt'
@@ -449,10 +618,23 @@ def _main():
 
     model.fit_generator(generator=train_generator, steps_per_epoch=len(train_data) // batch_size,
                         validation_data=valid_generator, validation_steps=len(valid_data) // batch_size,
-                        callbacks=[logging, checkpoint, early_stopping], epochs=5)
+                        callbacks=[logging], epochs=5)
 
     model.save_weights('trained_stage_1.h5')
+
+    model_body, model = create_model(lenc.classes_)
+
+    model.load_weights('trained_stage_1.h5')
+
+    model.compile(optimizer='adam', loss={
+        'yolo_loss': lambda y_true, y_pred: y_pred
+    })
+
+    model.fit_generator(generator=train_generator, steps_per_epoch=len(train_data) // batch_size,
+                        validation_data=valid_generator, validation_steps=len(valid_data) // batch_size,
+                        callbacks=[logging, checkpoint, early_stopping], epochs=30)
 
 
 if __name__ == "__main__":
     _main()
+    # _eval()
