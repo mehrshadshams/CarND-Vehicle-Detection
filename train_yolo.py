@@ -612,13 +612,13 @@ def _main():
     valid_generator = DataGenerator(anchors, batch_size=batch_size).generate(valid_data)
 
     logging = TensorBoard()
-    checkpoint = ModelCheckpoint("trained_stage_3_best.h5", monitor='val_loss',
-                                 save_weights_only=True, save_best_only=True)
+    checkpoint = ModelCheckpoint("train.{epoch:02d}-{val_loss:.2f}.h5", monitor='val_loss',
+                                 save_weights_only=False, save_best_only=True)
     early_stopping = EarlyStopping(monitor='val_loss', min_delta=0, patience=15, verbose=1, mode='auto')
 
     model.fit_generator(generator=train_generator, steps_per_epoch=len(train_data) // batch_size,
                         validation_data=valid_generator, validation_steps=len(valid_data) // batch_size,
-                        callbacks=[logging], epochs=5)
+                        callbacks=[logging], epochs=10)
 
     model.save_weights('trained_stage_1.h5')
 
