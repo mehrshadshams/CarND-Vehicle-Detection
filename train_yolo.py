@@ -502,9 +502,13 @@ def _eval():
     model_body, yolo_model = create_model(lenc.classes_, prediction=True)
     yolo_model.load_weights(model_path)
 
-    image_file = '/Users/meshams/Documents/Learn/temp/YAD2K/images/test1.jpg'
+    # image_file = '/Users/meshams/Documents/Learn/temp/YAD2K/images/test1.jpg'
+    image_file = '/Users/meshams/Downloads/object-detection-crowdai/1479498392966162658.jpg'
 
     image = cv2.imread(image_file)
+
+    height, width = image.shape[0:2]
+
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     image = cv2.resize(image, (416, 416))
     image = image.astype(np.float32) / 255.
@@ -521,22 +525,22 @@ def _eval():
     boxes, scores, classes = yolo_eval(
         yolo_outputs,
         input_image_shape,
-        score_threshold=0.3,
+        score_threshold=0.7,
         iou_threshold=0.5)
 
     out_boxes, out_scores, out_classes = sess.run(
             [boxes, scores, classes],
             feed_dict={
                 yolo_model.input: image,
-                input_image_shape: [image.shape[1], image.shape[0]],
+                input_image_shape: [height, width],
                 K.learning_phase(): 0
             })
     print('Found {} boxes for {}'.format(len(out_boxes), image_file))
 
     font = ImageFont.truetype(
         font='font/FiraMono-Medium.otf',
-        size=np.floor(3e-2 * image.shape[1] + 0.5).astype('int32'))
-    thickness = (image.shape[0] + image.shape[1]) // 300
+        size=np.floor(3e-2 * height + 0.5).astype('int32'))
+    thickness = (width + height) // 300
 
     image_orig = Image.open(image_file)
     for i, c in reversed(list(enumerate(out_classes))):
@@ -552,8 +556,8 @@ def _eval():
         top, left, bottom, right = box
         top = max(0, np.floor(top + 0.5).astype('int32'))
         left = max(0, np.floor(left + 0.5).astype('int32'))
-        bottom = min(image_orig.size[1], np.floor(bottom + 0.5).astype('int32'))
-        right = min(image_orig.size[0], np.floor(right + 0.5).astype('int32'))
+        bottom = min(height, np.floor(bottom + 0.5).astype('int32'))
+        right = min(width, np.floor(right + 0.5).astype('int32'))
         print(label, (left, top), (right, bottom))
 
         if top - label_size[1] >= 0:
@@ -587,10 +591,14 @@ def _main():
     lenc = LabelEncoder()
     data['c'] = lenc.fit_transform(data.Label)
 
-    data = data.sample(frac=0.01, random_state=100)
+    data = data.sample(frac=0.001, random_state=1000)
 
-    train_data = data[:int(len(data) * 0.8)]
-    valid_data = data[int(len(data) * 0.8):]
+    print(len(data))
+
+    mask = np.random.rand(len(data)) < 0.9
+
+    train_data = data[mask]
+    valid_data = data[~mask]
 
     # Load anchors
     with open(anchor_path) as f:
@@ -606,7 +614,7 @@ def _main():
             'yolo_loss': lambda y_true, y_pred: y_pred
     })
 
-    batch_size = 32
+    batch_size = 8
 
     train_generator = DataGenerator(anchors, batch_size=batch_size).generate(train_data)
     valid_generator = DataGenerator(anchors, batch_size=batch_size).generate(valid_data)
@@ -636,5 +644,5 @@ def _main():
 
 
 if __name__ == "__main__":
-    _main()
-    # _eval()
+    # _main()
+    _eval()

@@ -5,9 +5,9 @@ import numpy as np
 data = pd.read_csv(os.path.expanduser('~/Downloads/object-detection-crowdai/labels_crowdai.csv'))
 
 W, H = 1920, 1200
-xs, ys = 416./W, 416./H
+#xs, ys = 416./W, 416./H
+# W, H = 416, 416
 
-W, H = 416, 416
 dw = 1. / W
 dh = 1. / H
 
@@ -18,10 +18,10 @@ labels = data.Label.unique()
 # data['y1'] = np.min(data[['ymin', 'ymax']], axis=1) * ys
 # data['y2'] = np.max(data[['ymin', 'ymax']], axis=1) * ys
 
-# data['x1'] = data['xmin'] * xs
-# data['x2'] = data['xmax'] * xs
-# data['y1'] = data['ymin'] * ys
-# data['y2'] = data['ymax'] * ys
+data['x1'] = data['xmin']
+data['x2'] = data['xmax']
+data['y1'] = data['ymin']
+data['y2'] = data['ymax']
 
 data['w'] = dw * (data['x2'] - data['x1'])
 data['h'] = dh * (data['y2'] - data['y1'])
