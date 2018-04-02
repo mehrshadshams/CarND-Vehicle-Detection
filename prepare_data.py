@@ -25,8 +25,8 @@ data['y2'] = data['ymax']
 
 data['w'] = dw * (data['x2'] - data['x1'])
 data['h'] = dh * (data['y2'] - data['y1'])
-data['x'] = dw * ((data['x1'] + data['x2']) / 2)
-data['y'] = dh * ((data['y1'] + data['y2']) / 2)
+data['x'] = dw * ((data['x1'] + data['x2']) / 2.)
+data['y'] = dh * ((data['y1'] + data['y2']) / 2.)
 
 data.to_csv(os.path.expanduser('~/Downloads/object-detection-crowdai/labels2.csv'), index=False)
 
